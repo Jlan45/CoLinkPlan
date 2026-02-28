@@ -1,7 +1,6 @@
 # Co-Link Plan
 
 **Co-Link** 是一个分布式 AI 算力代理平台，让你将多台本地共享设备聚合成统一的、OpenAI 兼容的 API 端点。
-// 好啦其实是我自己的Coding Plan用不完突发奇想的一个产物
 ```
 本地共享设备 ─┐
 本地共享设备 ─┼──[WebSocket]──▶ Co-Link Server ──▶ API 调用者
@@ -126,6 +125,20 @@ go build -o bin/client ./cmd/client
 ./bin/server
 # 默认监听 :8080
 ```
+
+### 使用 Docker 部署 (推荐)
+
+项目提供了 `docker-compose.yml`，可以一键启动全栈服务（含数据库、缓存和网关）：
+
+```bash
+docker-compose up -d --build
+```
+
+该模式下：
+- **网关**：监听宿主机 `8080` 端口。
+- **数据库 & Redis**：仅在 Docker 内部网络开放，不对外暴露端口，确保安全。
+
+---
 
 访问 `http://localhost:8080` 即可看到 Web 控制台。
 
