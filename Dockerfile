@@ -7,7 +7,7 @@ COPY web/ ./
 RUN npm run build
 
 # --- Stage 2: Build Server ---
-FROM golang:1.21-alpine AS server-builder
+FROM golang:1.24-alpine AS server-builder
 WORKDIR /app
 # Install build dependencies
 RUN apk add --no-cache gcc musl-dev
