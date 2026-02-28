@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build Frontend
+        run: |
+          cd web
+          npm install
+          npm run build
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Build Binaries
+        run: |
+          mkdir -p dist
+          
+          # Define platforms to build for
+          PLATFORMS=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64")
+          
+          for platform in "${PLATFORMS[@]}"; do
+            platform_split=(${platform//\// })
+            GOOS=${platform_split[0]}
+            GOARCH=${platform_split[1]}
+            
+            BINARY_EXT=""
+            if [ "$GOOS" = "windows" ]; then
+              BINARY_EXT=".exe"
+            fi
+            
+            echo "Building for $GOOS/$GOARCH..."
+            
+            # Build Server
+            GOOS=$GOOS GOARCH=$GOARCH go build -o "dist/colink-server-$GOOS-$GOARCH$BINARY_EXT" ./cmd/server
+            
+            # Build Client
+            GOOS=$GOOS GOARCH=$GOARCH go build -o "dist/colink-client-$GOOS-$GOARCH$BINARY_EXT" ./cmd/client
+            
+            # Create archives
+            cd dist
+            if [ "$GOOS" = "windows" ]; then
+              zip "colink-$GOOS-$GOARCH.zip" "colink-server-$GOOS-$GOARCH$BINARY_EXT" "colink-client-$GOOS-$GOARCH$BINARY_EXT"
+              rm "colink-server-$GOOS-$GOARCH$BINARY_EXT" "colink-client-$GOOS-$GOARCH$BINARY_EXT"
+            else
+              tar -czf "colink-$GOOS-$GOARCH.tar.gz" "colink-server-$GOOS-$GOARCH$BINARY_EXT" "colink-client-$GOOS-$GOARCH$BINARY_EXT"
+              rm "colink-server-$GOOS-$GOARCH" "colink-client-$GOOS-$GOARCH"
+            fi
+            cd ..
+          done
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
