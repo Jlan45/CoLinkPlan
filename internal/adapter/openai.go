@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 
-	"CoLinkPlan/internal/protocol"
 	"CoLinkPlan/pkg/logger"
 )
 
@@ -34,21 +33,30 @@ func (a *OpenAIAdapter) Name() string {
 	return "openai"
 }
 
-func (a *OpenAIAdapter) Call(ctx context.Context, requestID string, model string, req protocol.ChatCompletionRequest, streamCh chan<- interface{}, errCh chan<- error) {
+func (a *OpenAIAdapter) Call(ctx context.Context, requestID string, model string, reqBody []byte, streamCh chan<- interface{}, errCh chan<- error) {
 	defer close(streamCh)
 	defer close(errCh)
 
-	req.Model = model
-	req.Stream = true
+	var payloadMap map[string]interface{}
+	if err := json.Unmarshal(reqBody, &payloadMap); err != nil {
+		errCh <- fmt.Errorf("failed to unmarshal request: %w", err)
+		return
+	}
 
-	reqBody, err := json.Marshal(req)
+	payloadMap["model"] = model
+	isStream := false
+	if s, ok := payloadMap["stream"].(bool); ok && s {
+		isStream = true
+	}
+
+	modifiedBody, err := json.Marshal(payloadMap)
 	if err != nil {
 		errCh <- fmt.Errorf("failed to marshal openai request: %w", err)
 		return
 	}
 
 	url := fmt.Sprintf("%s/chat/completions", strings.TrimSuffix(a.BaseURL, "/"))
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(modifiedBody))
 	if err != nil {
 		errCh <- fmt.Errorf("failed to create http request: %w", err)
 		return
@@ -57,7 +65,7 @@ func (a *OpenAIAdapter) Call(ctx context.Context, requestID string, model string
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+a.APIKey)
 
-	logger.Log.Info("Sending request to OpenAI", "request_id", requestID, "url", url, "model", model)
+	logger.Log.Info("Sending request to OpenAI", "request_id", requestID, "url", url, "model", model, "stream", isStream)
 
 	resp, err := a.Client.Do(httpReq)
 	if err != nil {
@@ -68,6 +76,19 @@ func (a *OpenAIAdapter) Call(ctx context.Context, requestID string, model string
 
 	if resp.StatusCode != http.StatusOK {
 		errCh <- fmt.Errorf("openai api returned status %d", resp.StatusCode)
+		return
+	}
+
+	if !isStream {
+		var res map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			errCh <- fmt.Errorf("error reading non-stream response: %w", err)
+			return
+		}
+		select {
+		case streamCh <- res:
+		case <-ctx.Done():
+		}
 		return
 	}
 

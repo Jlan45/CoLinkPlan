@@ -2,16 +2,22 @@ package protocol
 
 // ChatCompletionRequest represents a standard OpenAI API request body
 type ChatCompletionRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Stream      bool      `json:"stream,omitempty"`
-	Temperature float64   `json:"temperature,omitempty"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Model          string      `json:"model"`
+	Messages       []Message   `json:"messages"`
+	Stream         bool        `json:"stream,omitempty"`
+	Temperature    float64     `json:"temperature,omitempty"`
+	MaxTokens      int         `json:"max_tokens,omitempty"`
+	Tools          interface{} `json:"tools,omitempty"`
+	ToolChoice     interface{} `json:"tool_choice,omitempty"`
+	ResponseFormat interface{} `json:"response_format,omitempty"`
 }
 
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string      `json:"role"`
+	Content    interface{} `json:"content"`
+	Name       string      `json:"name,omitempty"`
+	ToolCalls  interface{} `json:"tool_calls,omitempty"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
 }
 
 // ChatCompletionResponse represents a standard OpenAI API response body (non-stream)
@@ -25,10 +31,10 @@ type ChatCompletionResponse struct {
 }
 
 type Choice struct {
-	Index        int      `json:"index"`
-	Message      *Message `json:"message,omitempty"` // Used in non-stream
-	Delta        *Message `json:"delta,omitempty"`   // Used in stream
-	FinishReason string   `json:"finish_reason,omitempty"`
+	Index        int         `json:"index"`
+	Message      interface{} `json:"message,omitempty"` // Used in non-stream
+	Delta        interface{} `json:"delta,omitempty"`   // Used in stream
+	FinishReason interface{} `json:"finish_reason,omitempty"`
 }
 
 type UsageStat struct {

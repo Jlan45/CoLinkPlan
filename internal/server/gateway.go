@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -170,10 +169,7 @@ func (g *Gateway) ChatCompletionsHandler(c *gin.Context) {
 	var payload interface{}
 	json.Unmarshal(bodyBytes, &payload)
 
-	// Force streaming at the protocol level so we can proxy both modes
-	if payloadMap, ok := payload.(map[string]interface{}); ok {
-		payloadMap["stream"] = true
-	}
+	// We no longer force stream=true so the client adapter knows if it should proxy a stream or not
 
 	// Dispatch and stream from hub
 	streamCh, dispatchErr := g.dispatchWithRetry(c, reqID, req.Model, payload)
@@ -255,13 +251,8 @@ func (g *Gateway) handleStreamResponse(c *gin.Context, streamCh chan protocol.WS
 	}
 }
 
-// handleNonStreamResponse collects all SSE chunks and assembles a full
-// OpenAI-compatible ChatCompletionResponse JSON object.
+// handleNonStreamResponse collects the single non-stream response object from upstream
 func (g *Gateway) handleNonStreamResponse(c *gin.Context, model string, streamCh chan protocol.WSPayload) {
-	var buf bytes.Buffer
-	respID := "chatcmpl-" + uuid.New().String()[:12]
-	created := time.Now().Unix()
-
 	for {
 		select {
 		case <-c.Request.Context().Done():
@@ -269,13 +260,13 @@ func (g *Gateway) handleNonStreamResponse(c *gin.Context, model string, streamCh
 			return
 		case msg, ok := <-streamCh:
 			if !ok {
-				// Channel closed — return what we have
-				c.JSON(http.StatusOK, buildNonStreamResponse(respID, model, created, buf.String()))
+				// Channel closed early
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Stream closed prematurely"})
 				return
 			}
 			switch msg.Type {
 			case protocol.MsgTypeFinish:
-				c.JSON(http.StatusOK, buildNonStreamResponse(respID, model, created, buf.String()))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Stream finished before returning data"})
 				return
 			case protocol.MsgTypeError:
 				dataBytes, _ := json.Marshal(msg.Data)
@@ -288,45 +279,17 @@ func (g *Gateway) handleNonStreamResponse(c *gin.Context, model string, streamCh
 				}})
 				return
 			case protocol.MsgTypeStream:
-				// Extract delta content from the chunk and append
+				// For non-streaming requests, the very first chunk contains the entire JSON response from upstream.
 				dataBytes, _ := json.Marshal(msg.Data)
 				var sd protocol.StreamData
 				if err := json.Unmarshal(dataBytes, &sd); err != nil {
-					continue
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse provider response"})
+					return
 				}
-				chunkBytes, _ := json.Marshal(sd.Chunk)
-				var chunk protocol.ChatCompletionStreamResponse
-				if err := json.Unmarshal(chunkBytes, &chunk); err != nil {
-					continue
-				}
-				for _, ch := range chunk.Choices {
-					if ch.Delta != nil {
-						buf.WriteString(ch.Delta.Content)
-					}
-				}
+				c.JSON(http.StatusOK, sd.Chunk)
+				return // we are fully done after receiving the one response object
 			}
 		}
-	}
-}
-
-// buildNonStreamResponse constructs a ChatCompletionResponse from accumulated content.
-func buildNonStreamResponse(id, model string, created int64, content string) protocol.ChatCompletionResponse {
-	return protocol.ChatCompletionResponse{
-		ID:      id,
-		Object:  "chat.completion",
-		Created: created,
-		Model:   model,
-		Choices: []protocol.Choice{
-			{
-				Index: 0,
-				Message: &protocol.Message{
-					Role:    "assistant",
-					Content: content,
-				},
-				FinishReason: "stop",
-			},
-		},
-		Usage: protocol.UsageStat{}, // Token counting not implemented in proxy mode
 	}
 }
 

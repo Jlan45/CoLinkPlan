@@ -211,9 +211,7 @@ func (m *Manager) executeTask(ctx context.Context, callData protocol.CallData) {
 	}
 
 	payloadBytes, _ := json.Marshal(callData.Payload)
-	var req protocol.ChatCompletionRequest
-	json.Unmarshal(payloadBytes, &req)
-
+	// context for adapter run
 	streamCh := make(chan interface{})
 	errCh := make(chan error, 1)
 
@@ -221,7 +219,7 @@ func (m *Manager) executeTask(ctx context.Context, callData protocol.CallData) {
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	go route.Provider.Call(subCtx, callData.RequestID, route.Local, req, streamCh, errCh)
+	go route.Provider.Call(subCtx, callData.RequestID, route.Local, payloadBytes, streamCh, errCh)
 
 	for {
 		select {

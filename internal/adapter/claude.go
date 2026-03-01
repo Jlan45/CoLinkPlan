@@ -50,9 +50,15 @@ type claudeMessage struct {
 	Content string `json:"content"`
 }
 
-func (a *ClaudeAdapter) Call(ctx context.Context, requestID string, model string, req protocol.ChatCompletionRequest, streamCh chan<- interface{}, errCh chan<- error) {
+func (a *ClaudeAdapter) Call(ctx context.Context, requestID string, model string, reqBody []byte, streamCh chan<- interface{}, errCh chan<- error) {
 	defer close(streamCh)
 	defer close(errCh)
+
+	var req protocol.ChatCompletionRequest
+	if err := json.Unmarshal(reqBody, &req); err != nil {
+		errCh <- fmt.Errorf("failed to parse request: %w", err)
+		return
+	}
 
 	// Convert OpenAI request to Claude request
 	cReq := claudeRequest{
@@ -67,13 +73,22 @@ func (a *ClaudeAdapter) Call(ctx context.Context, requestID string, model string
 	}
 
 	for _, m := range req.Messages {
+		contentStr := ""
+		if s, ok := m.Content.(string); ok {
+			contentStr = s
+		} else {
+			// If it's an array of objects (like images), we convert to string or stringify it for now
+			b, _ := json.Marshal(m.Content)
+			contentStr = string(b)
+		}
+
 		if m.Role == "system" {
 			// Claude expects system prompt at root level
-			cReq.System = m.Content
+			cReq.System = contentStr
 		} else {
 			cReq.Messages = append(cReq.Messages, claudeMessage{
 				Role:    m.Role,
-				Content: m.Content,
+				Content: contentStr,
 			})
 		}
 	}
