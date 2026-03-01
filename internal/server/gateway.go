@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -172,25 +173,25 @@ func (g *Gateway) ChatCompletionsHandler(c *gin.Context) {
 	// We no longer force stream=true so the client adapter knows if it should proxy a stream or not
 
 	// Dispatch and stream from hub
-	streamCh, dispatchErr := g.dispatchWithRetry(c, reqID, req.Model, payload)
+	streamCh, clientConn, dispatchErr := g.dispatchWithRetry(c, reqID, req.Model, payload)
 	if dispatchErr != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": dispatchErr.Error()})
 		return
 	}
 
 	if req.Stream {
-		g.handleStreamResponse(c, streamCh)
+		g.handleStreamResponse(c, streamCh, keyRecord.APIKey, clientConn)
 	} else {
-		g.handleNonStreamResponse(c, req.Model, streamCh)
+		g.handleNonStreamResponse(c, req.Model, streamCh, keyRecord.APIKey, clientConn)
 	}
 }
 
 // dispatchWithRetry attempts to route the call up to maxRetries times,
-// returning the stream channel or an error.
-func (g *Gateway) dispatchWithRetry(c *gin.Context, reqID, model string, payload interface{}) (chan protocol.WSPayload, error) {
+// returning the stream channel, the chosen client or an error.
+func (g *Gateway) dispatchWithRetry(c *gin.Context, reqID, model string, payload interface{}) (chan protocol.WSPayload, *ClientConn, error) {
 	maxRetries := 3
 	for i := 0; i < maxRetries; i++ {
-		streamCh, err := g.Hub.RouteCall(c.Request.Context(), reqID, model, payload)
+		streamCh, bestClient, err := g.Hub.RouteCall(c.Request.Context(), reqID, model, payload)
 		if err != nil {
 			logger.Log.Warn("Dispatch failed", "err", err, "attempt", i+1)
 			continue
@@ -215,13 +216,13 @@ func (g *Gateway) dispatchWithRetry(c *gin.Context, reqID, model string, payload
 			}
 			close(merged)
 		}()
-		return merged, nil
+		return merged, bestClient, nil
 	}
-	return nil, fmt.Errorf("no available clients after %d retries", maxRetries)
+	return nil, nil, fmt.Errorf("no available clients after %d retries", maxRetries)
 }
 
 // handleStreamResponse pipes the hub stream directly to the HTTP client as SSE.
-func (g *Gateway) handleStreamResponse(c *gin.Context, streamCh chan protocol.WSPayload) {
+func (g *Gateway) handleStreamResponse(c *gin.Context, streamCh chan protocol.WSPayload, apiToken string, clientConn *ClientConn) {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
@@ -238,6 +239,11 @@ func (g *Gateway) handleStreamResponse(c *gin.Context, streamCh chan protocol.WS
 			case protocol.MsgTypeFinish:
 				c.Writer.Write([]byte("data: [DONE]\n\n"))
 				c.Writer.Flush()
+
+				clientTokenStr := strings.Split(clientConn.ID, "_")[0]
+				g.DB.IncrementAPICalls(context.Background(), apiToken)
+				g.DB.IncrementProvidedCalls(context.Background(), clientTokenStr)
+
 				return
 			case protocol.MsgTypeError:
 				writeSSEChunk(c.Writer, msg)
@@ -252,7 +258,7 @@ func (g *Gateway) handleStreamResponse(c *gin.Context, streamCh chan protocol.WS
 }
 
 // handleNonStreamResponse collects the single non-stream response object from upstream
-func (g *Gateway) handleNonStreamResponse(c *gin.Context, model string, streamCh chan protocol.WSPayload) {
+func (g *Gateway) handleNonStreamResponse(c *gin.Context, model string, streamCh chan protocol.WSPayload, apiToken string, clientConn *ClientConn) {
 	for {
 		select {
 		case <-c.Request.Context().Done():
@@ -287,6 +293,11 @@ func (g *Gateway) handleNonStreamResponse(c *gin.Context, model string, streamCh
 					return
 				}
 				c.JSON(http.StatusOK, sd.Chunk)
+
+				clientTokenStr := strings.Split(clientConn.ID, "_")[0]
+				g.DB.IncrementAPICalls(context.Background(), apiToken)
+				g.DB.IncrementProvidedCalls(context.Background(), clientTokenStr)
+
 				return // we are fully done after receiving the one response object
 			}
 		}

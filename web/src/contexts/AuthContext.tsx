@@ -6,6 +6,8 @@ interface User {
     email: string;
     api_token: string;
     client_token: string;
+    total_api_calls: number;
+    total_provided_calls: number;
 }
 
 interface AuthContextType {

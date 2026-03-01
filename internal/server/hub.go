@@ -104,16 +104,16 @@ func (h *Hub) SelectClient(model string) (*ClientConn, error) {
 	return bestClient, nil
 }
 
-// RouteCall finds a client, sends the payload and returns the stream channel.
+// RouteCall finds a client, sends the payload and returns the stream channel and the chosen client.
 // Performs Failover: silent retries up to 3 times on disonnects or BUSY.
-func (h *Hub) RouteCall(ctx context.Context, requestID, model string, payload interface{}) (chan protocol.WSPayload, error) {
+func (h *Hub) RouteCall(ctx context.Context, requestID, model string, payload interface{}) (chan protocol.WSPayload, *ClientConn, error) {
 	var lastErr error
 	var bestClient *ClientConn
 
 	for i := 0; i < 3; i++ {
 		c, err := h.SelectClient(model)
 		if err != nil {
-			return nil, fmt.Errorf("scheduling failed: %w (last err: %v)", err, lastErr)
+			return nil, nil, fmt.Errorf("scheduling failed: %w (last err: %v)", err, lastErr)
 		}
 
 		bestClient = c
@@ -150,10 +150,10 @@ func (h *Hub) RouteCall(ctx context.Context, requestID, model string, payload in
 		}
 
 		// Successfully dispatched to client
-		return streamCh, nil
+		return streamCh, bestClient, nil
 	}
 
-	return nil, fmt.Errorf("failed to route call after 3 retries, last error: %v", lastErr)
+	return nil, nil, fmt.Errorf("failed to route call after 3 retries, last error: %v", lastErr)
 }
 
 // ListModels returns the set of model names currently advertised by at least one

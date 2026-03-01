@@ -40,7 +40,9 @@ const resources = {
                 clientConfig: "Client Configuration",
                 clientConfigDesc: "Add your Client Token to config.yaml to map local models",
                 apiTest: "API Request Test",
-                apiTestDesc: "Consume API exactly like standard SDK"
+                apiTestDesc: "Consume API exactly like standard SDK",
+                apiCalls: "Total API Calls Made",
+                providedCalls: "Total Computes Provided"
             },
             nodes: {
                 title: "Active Network Nodes",
@@ -116,7 +118,9 @@ const resources = {
                 clientConfig: "客户端接入教程",
                 clientConfigDesc: "请将您的 Client Token 添加至 config.yaml 以映射本地模型",
                 apiTest: "API调用教程",
-                apiTestDesc: "完全遵循 OpenAI 标准 SDK 的请求方式发起调用"
+                apiTestDesc: "完全遵循 OpenAI 标准 SDK 的请求方式发起调用",
+                apiCalls: "总计发起 API 调用",
+                providedCalls: "总计提供算力服务"
             },
             nodes: {
                 title: "活跃网络节点",

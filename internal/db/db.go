@@ -13,11 +13,13 @@ type DB struct {
 }
 
 type User struct {
-	ID           int    `db:"id" json:"id"`
-	Email        string `db:"email" json:"email"`
-	PasswordHash string `db:"password_hash" json:"-"`
-	APIToken     string `db:"api_token" json:"api_token"`
-	ClientToken  string `db:"client_token" json:"client_token"`
+	ID                 int    `db:"id" json:"id"`
+	Email              string `db:"email" json:"email"`
+	PasswordHash       string `db:"password_hash" json:"-"`
+	APIToken           string `db:"api_token" json:"api_token"`
+	ClientToken        string `db:"client_token" json:"client_token"`
+	TotalAPICalls      int    `db:"total_api_calls" json:"total_api_calls"`
+	TotalProvidedCalls int    `db:"total_provided_calls" json:"total_provided_calls"`
 }
 
 type APIKeyRecord struct {
@@ -57,11 +59,21 @@ func (db *DB) InitializeSchema() error {
 		email VARCHAR(255) UNIQUE NOT NULL,
 		password_hash VARCHAR(255) NOT NULL,
 		api_token VARCHAR(100) UNIQUE NOT NULL,
-		client_token VARCHAR(100) UNIQUE NOT NULL
+		client_token VARCHAR(100) UNIQUE NOT NULL,
+		total_api_calls INTEGER DEFAULT 0,
+		total_provided_calls INTEGER DEFAULT 0
 	);
 	`
 	_, err := db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Backward compatibility migrations
+	db.Exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS total_api_calls INTEGER DEFAULT 0;`)
+	db.Exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS total_provided_calls INTEGER DEFAULT 0;`)
+
+	return nil
 }
 
 func (db *DB) GetAPIKey(ctx context.Context, key string) (*APIKeyRecord, error) {
@@ -91,4 +103,14 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 		return nil, err
 	}
 	return &u, nil
+}
+
+func (db *DB) IncrementAPICalls(ctx context.Context, apiToken string) error {
+	_, err := db.ExecContext(ctx, "UPDATE users SET total_api_calls = total_api_calls + 1 WHERE api_token=$1", apiToken)
+	return err
+}
+
+func (db *DB) IncrementProvidedCalls(ctx context.Context, clientToken string) error {
+	_, err := db.ExecContext(ctx, "UPDATE users SET total_provided_calls = total_provided_calls + 1 WHERE client_token=$1", clientToken)
+	return err
 }
