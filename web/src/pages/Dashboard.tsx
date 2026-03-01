@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Copy, Check, Terminal, FileJson, KeySquare, Shield } from 'lucide-react';
+import { Copy, Check, Terminal, FileJson, KeySquare, Shield, Activity, Cpu } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Navbar } from '@/components/Navbar';
 
@@ -34,6 +34,28 @@ export default function Dashboard() {
                     </p>
                     <h1 className="text-3xl font-bold text-white">{t('dashboard.title')}</h1>
                     <p className="text-zinc-500 text-sm mt-1.5">{t('dashboard.subtitle')}</p>
+                </div>
+
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="rounded-2xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-5">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Activity className="w-4 h-4 text-emerald-400" />
+                            <span className="text-zinc-400 text-sm font-medium">{t('dashboard.apiCalls')}</span>
+                        </div>
+                        <div className="text-3xl font-light text-white tracking-tight">
+                            {user.total_api_calls || 0}
+                        </div>
+                    </div>
+                    <div className="rounded-2xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-5">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Cpu className="w-4 h-4 text-amber-400" />
+                            <span className="text-zinc-400 text-sm font-medium">{t('dashboard.providedCalls')}</span>
+                        </div>
+                        <div className="text-3xl font-light text-white tracking-tight">
+                            {user.total_provided_calls || 0}
+                        </div>
+                    </div>
                 </div>
 
                 {/* Token Cards */}
