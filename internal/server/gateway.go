@@ -179,10 +179,23 @@ func (g *Gateway) ChatCompletionsHandler(c *gin.Context) {
 		return
 	}
 
+	// Increment metrics asynchronously right after successful dispatch
+	go func() {
+		clientTokenStr := strings.Split(clientConn.ID, "_")[0]
+		err1 := g.DB.IncrementAPICalls(context.Background(), keyRecord.APIKey)
+		err2 := g.DB.IncrementProvidedCalls(context.Background(), clientTokenStr)
+		if err1 != nil {
+			logger.Log.Error("Failed to increment API calls", "err", err1)
+		}
+		if err2 != nil {
+			logger.Log.Error("Failed to increment provided calls", "err", err2)
+		}
+	}()
+
 	if req.Stream {
-		g.handleStreamResponse(c, streamCh, keyRecord.APIKey, clientConn)
+		g.handleStreamResponse(c, streamCh)
 	} else {
-		g.handleNonStreamResponse(c, req.Model, streamCh, keyRecord.APIKey, clientConn)
+		g.handleNonStreamResponse(c, req.Model, streamCh)
 	}
 }
 
@@ -222,7 +235,7 @@ func (g *Gateway) dispatchWithRetry(c *gin.Context, reqID, model string, payload
 }
 
 // handleStreamResponse pipes the hub stream directly to the HTTP client as SSE.
-func (g *Gateway) handleStreamResponse(c *gin.Context, streamCh chan protocol.WSPayload, apiToken string, clientConn *ClientConn) {
+func (g *Gateway) handleStreamResponse(c *gin.Context, streamCh chan protocol.WSPayload) {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
@@ -239,11 +252,6 @@ func (g *Gateway) handleStreamResponse(c *gin.Context, streamCh chan protocol.WS
 			case protocol.MsgTypeFinish:
 				c.Writer.Write([]byte("data: [DONE]\n\n"))
 				c.Writer.Flush()
-
-				clientTokenStr := strings.Split(clientConn.ID, "_")[0]
-				g.DB.IncrementAPICalls(context.Background(), apiToken)
-				g.DB.IncrementProvidedCalls(context.Background(), clientTokenStr)
-
 				return
 			case protocol.MsgTypeError:
 				writeSSEChunk(c.Writer, msg)
@@ -258,7 +266,7 @@ func (g *Gateway) handleStreamResponse(c *gin.Context, streamCh chan protocol.WS
 }
 
 // handleNonStreamResponse collects the single non-stream response object from upstream
-func (g *Gateway) handleNonStreamResponse(c *gin.Context, model string, streamCh chan protocol.WSPayload, apiToken string, clientConn *ClientConn) {
+func (g *Gateway) handleNonStreamResponse(c *gin.Context, model string, streamCh chan protocol.WSPayload) {
 	for {
 		select {
 		case <-c.Request.Context().Done():
@@ -293,10 +301,6 @@ func (g *Gateway) handleNonStreamResponse(c *gin.Context, model string, streamCh
 					return
 				}
 				c.JSON(http.StatusOK, sd.Chunk)
-
-				clientTokenStr := strings.Split(clientConn.ID, "_")[0]
-				g.DB.IncrementAPICalls(context.Background(), apiToken)
-				g.DB.IncrementProvidedCalls(context.Background(), clientTokenStr)
 
 				return // we are fully done after receiving the one response object
 			}
