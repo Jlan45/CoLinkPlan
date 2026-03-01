@@ -54,6 +54,22 @@ func (c *ClientConn) ReadLoop() {
 		c.ConnMutex.Lock()
 		c.Conn.Close()
 		c.ConnMutex.Unlock()
+
+		c.PendingMutex.Lock()
+		for reqID, ch := range c.PendingStreams {
+			// Ensure wait handlers are unblocked and gracefully exit
+			close(ch)
+
+			c.Hub.mu.Lock()
+			c.ActiveTasks--
+			if c.ActiveTasks < 0 {
+				c.ActiveTasks = 0
+			}
+			c.Hub.mu.Unlock()
+			delete(c.PendingStreams, reqID)
+		}
+		c.PendingMutex.Unlock()
+
 		close(c.closeCh)
 	}()
 

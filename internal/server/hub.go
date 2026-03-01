@@ -191,6 +191,9 @@ func (h *Hub) CompleteTask(client *ClientConn, requestID string) {
 	client.Hub.mu.Unlock()
 
 	client.PendingMutex.Lock()
-	delete(client.PendingStreams, requestID)
+	if ch, ok := client.PendingStreams[requestID]; ok {
+		delete(client.PendingStreams, requestID)
+		close(ch)
+	}
 	client.PendingMutex.Unlock()
 }
