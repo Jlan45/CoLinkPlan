@@ -53,3 +53,5 @@ client.yaml
 *PRD.md
 docker-compose.local.yml
 colink-server-linux-amd64
+client
+server

@@ -11,13 +11,15 @@
 
 ## 功能特性
 
-- **OpenAI 全兼容** — 支持 Chat Completions（流式 & 非流式）、Models API
+- **OpenAI 全兼容** — 支持 Chat Completions（流式 & 非流式）、Models API、**Function Calling (工具调用)** 及 **多模态 (图片输入)**
 - **分布式调度** — 按并发负载动态路由，自动 failover 重试（最多 3 次）
 - **零信任鉴权** — JWT 用户认证 + bcrypt 密码哈希 + API Token / Client Token 双令牌体系
 - **速率限制** — 基于 Redis 的 RPM（每分钟请求数）限流
 - **多 Provider 支持** — 客户端可同时接入 OpenAI 兼容接口（包括 Claude via 适配器）
 - **内嵌前端** — React 前端编译后通过 `go:embed` 打包进服务端二进制，零额外依赖
+- **Dashboard 统计面板** — 用户可实时查看发起的 API 总调用次数以及共享计算节点提供的总调用次数
 - **节点惩罚机制** — 出错节点自动封禁 60 秒，避免流量持续路由到故障节点
+
 
 ---
 
